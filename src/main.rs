@@ -1,5 +1,5 @@
 use tracing::{info, span, Level};
-use sqlx::{postgres::PgPoolOptions, types::time::OffsetDateTime, Pool, Postgres};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use std::time::Instant;
 
@@ -7,8 +7,6 @@ use axum::{
     routing::get,
     Router,
 };
-
-use polars::prelude::*;
 
 mod dataframe_generator;
 
@@ -53,7 +51,7 @@ async fn fetch_data(pool : Pool<Postgres>) -> String {
     let result = dataframe_generator::from_postgresql_server(&pool).await;
 
     match result {
-     Ok(df) => String::from(format!("{:#?}", df)),
-     Err(err) => String::from(format!("{:#?}", err))
+     Ok(df) => String::from(format!("Completed in: {} ms\n{:#?}", start.elapsed().as_millis(), df)),
+     Err(err) => String::from(format!("Error: {:#?}", err))
     }
 }
