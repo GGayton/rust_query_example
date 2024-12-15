@@ -3,8 +3,11 @@ use sqlx::{types::time::OffsetDateTime, Pool, Postgres};
 
 use polars::prelude::*;
 
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 /// From: https://stackoverflow.com/questions/73167416/creating-polars-dataframe-from-vecstruct
 /// Modified as to allow mappings for custom objects 
+/// Modified to use LazyFrame constructor
 macro_rules! struct_to_dataframe {
     ($input:expr, [$($field:ident, $map:expr),+]) => {
         {
@@ -17,13 +20,22 @@ macro_rules! struct_to_dataframe {
                 $($field.push($map(e.$field));)*
             }
 
-            df! {
-                $(stringify!($field) => $field,)*
-            }
+            // I imagine these methods are equivalent, we have already done the work to 
+            // create our vectorised data.
+            //df! {
+                //$(stringify!($field) => $field,)*
+            //}
+
+            let df = LazyFrame::default();
+
+            df
+                $(.with_column( Series::new(stringify!($field).into(), $field).lit()))+
+                
         }
     };
 }
 
+/// Record used for translation from postgresql db
 #[derive(Debug)]
 struct UserRecord {
     id : i64,
@@ -34,8 +46,8 @@ struct UserRecord {
     lastupdate : OffsetDateTime
 }
 
-fn from_user_record(vec : Vec<UserRecord>) -> Result<DataFrame> {
-
+/// Constructs a dataframe from a vector of user records
+fn from_user_record(vec : Vec<UserRecord>) -> LazyFrame {
     
     fn as_is<T>(e : T) -> T { e }
 
@@ -51,29 +63,25 @@ fn from_user_record(vec : Vec<UserRecord>) -> Result<DataFrame> {
             email, as_is,
             lastupdate, from_offset_date_time
         ])
-        .map(|mut df| {
-            df.with_column(
-                df
-                    .column("lastupdate")
-                    .unwrap()
-                    .cast(&DataType::Datetime(TimeUnit::Milliseconds, Some("Utc".into())))
-                    .unwrap()
-                ).expect("Malformed data on last update");
-            df
-        })
-        .map_err(|err| err.into() )
+        .with_column(
+                    col("lastupdate")
+                    .cast(DataType::Datetime(
+                        TimeUnit::Milliseconds, 
+                        Some("Utc".into()))
+                    )
+                )
+            
+        
 }
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+/// Obtains data from the postgresql db, limited to 10 rows only
+pub async fn from_postgresql_server(pool : &Pool<Postgres>) -> Result<LazyFrame> {
 
-pub async fn from_postgresql_server(pool : &Pool<Postgres>) -> Result<DataFrame> {
-
-    let out = sqlx::query_as!(UserRecord, "SELECT * FROM UserData LIMIT 10 OFFSET 0")
+    let out : Result<LazyFrame> = sqlx::query_as!(UserRecord, "SELECT * FROM UserData LIMIT 10 OFFSET 0")
         .fetch_all(pool)
         .await
         .map_err(|err| err.into() )
-        .and_then(from_user_record)
-        .map_err(|err| err.into());
+        .and_then(|v| Ok(from_user_record(v)));
     
     info!("Retrieved data from database");
 

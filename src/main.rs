@@ -43,12 +43,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 }
 
-/// Clon
 async fn fetch_data(pool : Pool<Postgres>) -> String {
 
     let start = Instant::now();
 
-    let result = dataframe_generator::from_postgresql_server(&pool).await;
+    let result = dataframe_generator::from_postgresql_server(&pool)
+        .await
+        .and_then(|df| df
+            .collect()
+            .map_err(|err| err.into()));
 
     match result {
      Ok(df) => String::from(format!("Completed in: {} ms\n{:#?}", start.elapsed().as_millis(), df)),
