@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS UserData (
     MiddleName varchar(64),
     LastName varchar(64),
     Email varchar(128) UNIQUE NOT NULL,
-    LastUpdate TIMESTAMPTZ DEFAULT NOW()
+    LastUpdate TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 INSERT INTO UserData ( FirstName, LastName, Email)
